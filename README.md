@@ -13,27 +13,27 @@ Single file, no dependencies, fully customizable.
 
 ---
 
-## Usage
+## Try
 ```bash
 # Help
-lua nook.lua -n NAME -h
+lua nook.lua -n todo -h
 
 # List entries
-lua nook.lua -n NAME -d example -l
+lua nook.lua -n todo -d example -l
 
 # Filter
-lua nook.lua -n NAME -d example -l -f FILTER
+lua nook.lua -n todo -d example -l -f FILTER
 
 # Sort
-lua nook.lua -n NAME -d example -l -s SORT
+lua nook.lua -n todo -d example -l -s SORT
 
 # Format output
-lua nook.lua -n NAME -d example -l -t FORMAT
+lua nook.lua -n todo -d example -l -t FORMAT
 
 # Show available options
-lua nook.lua -n NAME -d example -f ?
-lua nook.lua -n NAME -d example -s ?
-lua nook.lua -n NAME -d example -t ?
+lua nook.lua -n todo -d example -f ?
+lua nook.lua -n todo -d example -s ?
+lua nook.lua -n todo -d example -t ?
 ```
 
 ---
