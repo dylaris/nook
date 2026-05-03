@@ -18,16 +18,16 @@ A simple **rule-based CLI tool** for managing structured data.
 lua nook.lua -h
 
 # List entries
-lua nook.lua -n todo -d example -l
+lua nook.lua -n todo -d example
 
 # Filter entries
-lua nook.lua -n todo -d example -l -f status:done
+lua nook.lua -n todo -d example -f status:done
 
 # Sort entries
-lua nook.lua -n todo -d example -l -s date
+lua nook.lua -n todo -d example -s date
 
 # Custom output format
-lua nook.lua -n todo -d example -l -t color
+lua nook.lua -n todo -d example -t color
 
 # List available options
 lua nook.lua -n todo -d example -f ?
