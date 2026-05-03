@@ -38,3 +38,28 @@ lua nook.lua -n project -d example -t ?
 ---
 
 For full documentation, see **MANUAL.md**.
+
+## Install
+
+- **bash**
+put this to **.bashrc**.
+Put this into `~/.bashrc`
+```bash
+eval "$(lua /path/to/noo.lua --init bash)"
+```
+
+- **powershell**
+Put this into your PowerShell profile (`$PROFILE`):
+```powershell
+Invoke-Expression (& { (lua /path/to/nook.lua --init powershell) -join "`n" })
+```
+
+If the profile does not exist, run this to create it:
+```powershell
+if (-not (Test-Path $PROFILE)) { New-Item -ItemType File -Path $PROFILE -Force }
+```
+
+If you cannot run scripts, run this to allow local scripts:
+```powershell
+Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
+```
