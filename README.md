@@ -1,86 +1,40 @@
 # nook
-A minimal, **rule-based CLI tool** for managing structured data.
-Single file, no dependencies, fully customizable.
+A simple **rule-based CLI tool** for managing structured data.
 
 ---
 
 ## Design
-- **Single-file tool**: Only `nook.lua` is needed.
-- **Rule-driven**: All behavior is defined by **Lua script rules**.
+- **Rule-driven**: All behavior is defined by Lua scripts.
 - **Separation of data and schema**:
-  - `rule/NAME.lua` → structure, filter, sort, format.
-  - `data/NAME.lua` → actual entries.
+  - `rule/NAME.lua` — defines struct, filters, sorters, and formatters.
+  - `data/NAME.lua` — stores your actual entries.
+- **Lightweight & extensible**: Build your own data types in seconds.
 
 ---
 
-## Try
+## Quick Start
 ```bash
-# Help
-lua nook.lua -n todo -h
+# Show help
+lua nook.lua -h
 
 # List entries
 lua nook.lua -n todo -d example -l
 
-# Filter
-lua nook.lua -n todo -d example -l -f FILTER
+# Filter entries
+lua nook.lua -n todo -d example -l -f status:done
 
-# Sort
-lua nook.lua -n todo -d example -l -s SORT
+# Sort entries
+lua nook.lua -n todo -d example -l -s date
 
-# Format output
-lua nook.lua -n todo -d example -l -t FORMAT
+# Custom output format
+lua nook.lua -n todo -d example -l -t color
 
-# Show available options
+# List available options
 lua nook.lua -n todo -d example -f ?
-lua nook.lua -n todo -d example -s ?
-lua nook.lua -n todo -d example -t ?
+lua nook.lua -n money -d example -s ?
+lua nook.lua -n project -d example -t ?
 ```
 
 ---
 
-## Rule Example (rule/NAME.lua)
-```lua
--- lua script
-return {
-  struct = {
-    title = "string",
-    status = { "pending", "done" },
-    date = "string"
-  },
-
-  filter = {
-    pending = function(e) return e.status == "pending" end,
-    done = function(e) return e.status == "done" end
-  },
-
-  sort = {
-    date = function(a,b) return a.date < b.date end
-  },
-
-  format = {
-    brief = function(e) return e.date .. " | " .. e.status .. " | " .. e.title end
-  }
-}
-```
-
----
-
-## Data Example (data/NAME.lua)
-```lua
--- lua script
-entry{
-  title = "first",
-  status = "pending",
-  date = "2025-7-1",
-}
-entry{
-  title = "second",
-  status = "pending",
-  date = "2025-7-2"
-}
-entry{
-  title = "third",
-  status = "done",
-  date = "2026-7-2"
-}
-```
+For full documentation, see **MANUAL.md**.
