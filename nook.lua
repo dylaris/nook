@@ -1,4 +1,23 @@
 --===========================================================================
+-- err start
+--===========================================================================
+
+local err = {}
+
+function err.println(message)
+  io.stderr:write(tostring(message) .. "\n")
+end
+
+function err.print(message)
+  io.stderr:write(tostring(message))
+end
+
+function err.fatal(message)
+  io.stderr:write(tostring(message) .. "\n")
+  os.exit(1)
+end
+
+--===========================================================================
 -- argparser start
 --===========================================================================
 
@@ -65,7 +84,7 @@ end
 
 -- Check if a string is an option starting with - or --
 local function isopt(s)
-  return not not (s:match("^%-%w$") or s:match("^%-%-%w+"))
+  return not not (s:match("^%-") or s:match("^%-%-"))
 end
 
 -- Split the global arg table into structured options and their arguments
@@ -152,8 +171,7 @@ function argparser:_process_raw_options(raw_opts)
   for _, raw in ipairs(raw_opts) do
     local opt = self.map[raw.name]
     if not opt then
-      print("error: unknown option: " .. raw.name)
-      os.exit(1)
+      err.fatal("error: unknown option: " .. raw.name)
     end
 
     opt.used = true
@@ -228,24 +246,21 @@ end
 -- Ensure the option receives exactly the expected number of arguments
 function argparser:_check_exact_arg_count(opt, actual, expected)
   if actual ~= expected then
-    print(("error: option %s requires %d args, got %d"):format(opt.long, expected, actual))
-    os.exit(1)
+    err.fatal(("error: option %s requires %d args, got %d"):format(opt.long, expected, actual))
   end
 end
 
 -- Ensure the option receives 0 or 1 argument at most
 function argparser:_check_zero_or_one_arg(opt, count)
   if count > 1 then
-    print(("error: option %s allows 0 or 1 args, got %d"):format(opt.long, count))
-    os.exit(1)
+    err.fatal(("error: option %s allows 0 or 1 args, got %d"):format(opt.long, count))
   end
 end
 
 -- Ensure the option receives at least one argument
 function argparser:_check_at_least_one_arg(opt, count)
   if count < 1 then
-    print(("error: option %s requires at least 1 arg, got %d"):format(opt.long, count))
-    os.exit(1)
+    err.fatal(("error: option %s requires at least 1 arg, got %d"):format(opt.long, count))
   end
 end
 
@@ -254,7 +269,7 @@ function argparser:_ensure_required_options_used()
   local missing = false
   for _, opt in ipairs(self.options) do
     if opt.required and not opt.used then
-      print("error: required option not used: " .. opt.long)
+      err.println("error: required option not used: " .. opt.long)
       missing = true
     end
   end
@@ -262,98 +277,391 @@ function argparser:_ensure_required_options_used()
 end
 
 --===========================================================================
--- argparser end
---===========================================================================
-
---===========================================================================
 -- nook start
 --===========================================================================
 
--- Initialize command line argument parser
-local parser = argparser.new("noooooook")
-parser:add("-h", "--help",    { nargs = 0,   desc = "show this help message", ignore = true })
-parser:add("-I", "--init",    { nargs = 1,   desc = "init shell (bash/powershell)", ignore = true })
-parser:add("-d", "--dir",     { nargs = 1,   desc = "set base directory for rule/ and data/", default = "." })
-parser:add("-n", "--name",    { nargs = 1,   desc = "set entry type name", required = true })
-parser:add("-t", "--format",  { nargs = 1,   desc = "set output format type", default = "brief" })
-parser:add("-f", "--filter",  { nargs = "+", desc = "set filter (func or func:a,b or func:a,b func2:c)" })
-parser:add("-s", "--sort",    { nargs = 1,   desc = "set sort type" })
-parser:add("-v", "--invert",  { nargs = 0,   desc = "invert filter result (exclude matched)" })
-parser:add("-r", "--reverse", { nargs = 0,   desc = "reverse sort order" })
-parser:add("-o", "--output",  { nargs = 1,   desc = "write output to file" })
-parser:parse()
+-----------------------------------------------------------------------------
+-- menu
+-----------------------------------------------------------------------------
 
--- Initialize shell
-local NOOK_PATH = arg[0]
-local init_opt = parser:getopt("init")
-if init_opt.used then
-  local sh = init_opt.first_arg
-  if sh == "bash" then
-    print([[
-nook() {
-  lua "]] .. NOOK_PATH .. [[" "$@"
-}
-]])
-  elseif sh == "powershell" then
-    print([[
-function nook {
-  lua "]] .. NOOK_PATH .. [[" @args
-}
-]])
+-- Nook structure overview
+--
+-- Global nook table
+-- _G.nook = {
+--   path      = script self path
+--   dir       = base working directory
+--   name      = entry type name
+--   rule      = load rule definition from rule/name.lua
+--   data      = loaded entry list data
+--   trigger   = workflow hooks: format / filter / sort / output / update
+--   action    = standalone commands: start / help / config / init
+--   formatter = selected output format function
+-- }
+--
+-- Two core modules
+-- 1. action: high priority commands
+--    Run and exit immediately, skip follow workflow
+--    List: start, help, config, init
+--
+-- 2. trigger: workflow lifecycle hooks
+--    Run in fixed order, no exit, continue process
+--    Order: format → filter → sort → output → update
+--
+-- Config system
+-- Default keys: dir, name, format, filter, sort, output, update
+-- Only support pre-difined config
+-- Load order: local .nookini.lua → env NOOKINI
+-- Config key whitelist, forbid unknown new keys
+--
+-- Rule file structure
+-- rule = {
+--   struct  = define entry fields type & enum values
+--   format  = output render functions
+--   filter  = data filter functions
+--   sort    = data sort compare functions
+-- }
+--
+-- Workflow flow
+-- 1. load config (local .nookini.lua or env NOOKINI)
+-- 2. parse cli arguments
+-- 3. run action (exit if matched)
+-- 4. load & validate rule file
+-- 5. load & validate data entries
+-- 6. run trigger pipeline
+-- 7. print final result to console
+
+-----------------------------------------------------------------------------
+-- misc
+-----------------------------------------------------------------------------
+
+local function write_to_file(path, content)
+  local f = io.open(path, "w")
+  if not f then
+    err.fatal("error: cannot find file -> '" .. path .. "': maybe you need to create directory first")
   end
-  return
+  f:write(content)
+  f:close()
 end
 
--- Show help information
-if parser:getopt("help").used then
-  parser:print()
-  return
+local function file_exists(path)
+  local f = io.open(path, "r")
+  if not f then
+    return false
+  end
+  f:close()
+  return true
 end
-
--- Get entry name and file paths
-local base_dir = parser:getopt("dir").first_arg
-local entry_name = parser:getopt("name").first_arg
-local rule_file = base_dir .. "/rule/" .. entry_name .. ".lua"
-local data_file = base_dir .. "/data/" .. entry_name .. ".lua"
 
 local function safe_dofile(path)
   local f = io.open(path, "r")
   if not f then
-    print("error: cannot find file -> " .. path)
-    print("       try '-d' option to specify base directory")
-    os.exit(1)
+    err.fatal("error: cannot find file -> " .. path)
   end
   f:close()
 
   local ok, ret = pcall(dofile, path)
   if not ok then
-    print("error: failed to load file -> " .. path)
-    print("reason: " .. tostring(ret))
-    os.exit(1)
+    err.fatal("error: failed to load file -> " .. path .. ": " .. tostring(ret))
   end
   return ret
 end
 
--- Load rule configuration
-local rule = safe_dofile(rule_file)
+function table.filter(t, predicate)
+  local result = {}
+  for _, item in ipairs(t) do
+    if predicate(item) then
+      table.insert(result, item)
+    end
+  end
+  return result
+end
 
--- Check top-level required rule fields
-local required = { "struct", "format", "filter", "sort" }
-for _, key in ipairs(required) do
-  if not rule[key] then
-    print("error: rule missing required top-level key: " .. key)
-    os.exit(1)
+local rule_template = [[
+return {
+  struct = {
+    title = "string",
+    status = { "wait", "run", "end", "drop", "hold" },
+    date = "string",
+  },
+
+  format = {
+    brief = function(e)
+      return string.format("%s | %s | %s", e.date, e.status, e.title)
+    end,
+
+    color = function(e)
+      local Color = {
+        reset   = "\27[0m",
+        red     = "\27[31m",
+        green   = "\27[32m",
+        gray    = "\27[37m",
+        blue    = "\27[34m",
+        pink    = "\27[35m",
+        cyan    = "\27[36m",
+        yellow  = "\27[33m",
+      }
+
+      local prefix = ""
+      if e.status == "wait" then
+        prefix = Color.blue
+      elseif e.status == "run" then
+        prefix = Color.yellow
+      elseif e.status == "end" then
+        prefix = Color.green
+      elseif e.status == "drop" then
+        prefix = Color.gray
+      elseif e.status == "hold" then
+        prefix = Color.red
+      else
+        prefix = Color.reset
+      end
+      return prefix .. string.format("%s | %s | %s", e.date, e.status, e.title) .. Color.reset
+    end
+  },
+
+  filter = {
+    status = function(e, s)
+      return e.status == s
+    end,
+
+    today = function(e)
+      local now = os.date("*t")
+      local today_str = string.format("%04d-%02d-%02d", now.year, now.month, now.day)
+      return e.date == today_str
+    end,
+
+    before = function(e, d)
+      return e.date < d
+    end,
+
+    after = function(e, d)
+      return e.date > d
+    end,
+
+    search = function(e, keyword)
+      return e.title:lower():find(keyword:lower(), 1, true) ~= nil
+    end
+  },
+
+  sort = {
+    date = function(a, b)
+      return a.date > b.date
+    end,
+  },
+}
+]]
+
+local data_template = [[
+entry{ title = "Finish daily code review", status = "wait", date = "2026-01-01" }
+]]
+
+-----------------------------------------------------------------------------
+-- load default config
+-----------------------------------------------------------------------------
+
+_G.nook = {
+  path = arg[0],
+  dir = nil,
+  name = nil,
+  rule = nil,
+  data = nil,
+  trigger = {},
+  action = {},
+  formatter = nil,
+}
+
+local default_config = {
+  dir = ".",
+  name = nil,
+  filter = nil,
+  sort = nil,
+  format = "brief",
+  output = nil,
+  update = nil,
+}
+
+local allowed_keys = {
+  dir = true,
+  name = true,
+  filter = true,
+  sort = true,
+  format = true,
+  output = true,
+  update = true,
+}
+
+setmetatable(default_config, {
+  __newindex = function(tbl, key, value)
+    if not allowed_keys[key] then
+      err.fatal("error: config key '" .. tostring(key) .. "' is not allowed")
+    end
+    rawset(tbl, key, value)
+  end
+})
+
+local function check_string_array(arr)
+  if type(arr) ~= "table" then
+    return false
+  end
+
+  for k, v in pairs(arr) do
+    if type(k) ~= "number" or k < 1 or math.floor(k) ~= k then
+      return false
+    end
+    if type(v) ~= "string" then
+      return false
+    end
+  end
+
+  return true
+end
+
+local config_file = file_exists(".nookini.lua") and ".nookini.lua" or os.getenv("NOOKINI")
+if config_file ~= nil then
+  local config = safe_dofile(config_file)
+  for k, v in pairs(config) do
+    if type(v) == "table" then
+      if not check_string_array(v) then
+        err.fatal("error: value of config key: '" .. tostring(k) .. "' should be string array")
+      end
+    end
+    default_config[k] = v
   end
 end
 
--- Check required format functions
-local format_required = { "brief" }
-for _, key in ipairs(format_required) do
-  if not rule.format[key] then
-    print("error: rule.format missing required function: " .. key)
-    os.exit(1)
+-----------------------------------------------------------------------------
+-- parser
+-----------------------------------------------------------------------------
+
+local parser = argparser.new("noooooook")
+parser:add("",   "--start",   { nargs = 1,   desc = "init shell (bash/powershell)", ignore = true })
+parser:add("",   "--config",  { nargs = 0,   desc = "look nook default config", ignore = true })
+parser:add("-h", "--help",    { nargs = 0,   desc = "show this help message", ignore = true })
+parser:add("-I", "--init",    { nargs = 0,   desc = "auto create rule/data (-n is required)" })
+parser:add("-d", "--dir",     { nargs = 1,   desc = "set base directory for rule/ and data/", default = default_config.dir })
+parser:add("-n", "--name",    { nargs = 1,   desc = "set entry type name", default = default_config.name, required = true })
+parser:add("-t", "--format",  { nargs = 1,   desc = "set output format type", default = default_config.format })
+parser:add("-f", "--filter",  { nargs = "+", desc = "set filter (func or func:a,b or func:a,b func2:c)", default = default_config.filter })
+parser:add("-s", "--sort",    { nargs = 1,   desc = "set sort type", default = default_config.sort })
+parser:add("-v", "--invert",  { nargs = 0,   desc = "invert filter result (exclude matched)" })
+parser:add("-r", "--reverse", { nargs = 0,   desc = "reverse sort order" })
+parser:add("-o", "--output",  { nargs = 1,   desc = "write output to file", default = default_config.output })
+parser:add("-u", "--update",  { nargs = "+", desc = "update data file", default = default_config.update })
+parser:parse()
+
+_G.nook.dir  = parser:getopt("dir").first_arg
+_G.nook.name = parser:getopt("name").first_arg
+
+-----------------------------------------------------------------------------
+-- define action
+-----------------------------------------------------------------------------
+
+local action_priority = {
+  "start", -- high
+  "help",
+  "config",
+  "init", -- low
+}
+
+-- Initialize shell
+_G.nook.action.start = function()
+  local start_opt = parser:getopt("start")
+  if start_opt.used then
+    local sh = start_opt.first_arg
+    if sh == "bash" then
+      print([[
+  nook() {
+    lua "]] .. _G.nook.path .. [[" "$@"
+  }
+  ]])
+    elseif sh == "powershell" then
+      print([[
+  function nook {
+    lua "]] .. _G.nook.path .. [[" @args
+  }
+  ]])
+    end
+    os.exit(0)
   end
 end
+
+-- Show help information
+_G.nook.action.help = function()
+  if parser:getopt("help").used then
+    parser:print()
+    os.exit(0)
+  end
+end
+
+-- Look config
+_G.nook.action.config = function()
+  if parser:getopt("config").used then
+    if config_file then
+      print("===nook default config===")
+      print("config file: " .. config_file)
+      print("=========================")
+      for k, v in pairs(default_config) do
+        local arg = type(v) == "string" and v or table.concat(v, " ")
+        print(tostring(k) .. " = " .. arg)
+      end
+      print("=========================")
+    else
+      print("===no config file===")
+    end
+    os.exit(0)
+  end
+end
+
+-- Initialize directory
+local cfg_template = string.format([[
+return {
+  dir = %q,
+  name = %q,
+  format = "brief",
+  filter = nil,
+  sort = nil,
+  output = nil,
+  update = nil,
+}
+]],
+  _G.nook.dir,
+  _G.nook.name
+)
+
+_G.nook.action.init = function()
+  if parser:getopt("init").used then
+    -- write rule.lua
+    local rule_file = _G.nook.dir .. "/rule/" .. _G.nook.name .. ".lua"
+    if not file_exists(rule_file) then
+      write_to_file(rule_file, rule_template)
+    end
+
+    -- write data.lua
+    local data_file = _G.nook.dir .. "/data/" .. _G.nook.name .. ".lua"
+    if not file_exists(data_file) then
+      write_to_file(data_file, data_template)
+    end
+
+    -- write cfg.lua
+    local cfg_file = ".nookini.lua"
+    if not file_exists(cfg_file) then
+      write_to_file(cfg_file, cfg_template)
+    end
+    os.exit(0)
+  end
+end
+
+-----------------------------------------------------------------------------
+-- run action
+-----------------------------------------------------------------------------
+
+for _, v in ipairs(action_priority) do
+  _G.nook.action[v]()
+end
+
+-----------------------------------------------------------------------------
+-- load rule
+-----------------------------------------------------------------------------
 
 -- Create a helper function to list available options
 local function create_help_func(title, item_table)
@@ -368,13 +676,40 @@ local function create_help_func(title, item_table)
   end
 end
 
+-- Load rule configuration
+local rule_file = _G.nook.dir .. "/rule/" .. _G.nook.name .. ".lua"
+_G.nook.rule = safe_dofile(rule_file)
+
+-- Check top-level required rule fields
+local required = { "struct", "format", "filter", "sort" }
+for _, key in ipairs(required) do
+  if not _G.nook.rule[key] then
+    print("error: rule missing required top-level key: " .. key)
+    os.exit(1)
+  end
+end
+
+-- Check required format functions
+local format_required = { "brief" }
+for _, key in ipairs(format_required) do
+  if not _G.nook.rule.format[key] then
+    print("error: rule.format missing required function: " .. key)
+    os.exit(1)
+  end
+end
+
 -- Inject help option "?" into rule modules
-rule.format["?"] = create_help_func("Available output formats:", rule.format)
-rule.filter["?"] = create_help_func("Available filters:", rule.filter)
-rule.sort["?"]   = create_help_func("Available sort fields:", rule.sort)
+_G.nook.rule.format["?"] = create_help_func("Available output formats:", _G.nook.rule.format)
+_G.nook.rule.filter["?"] = create_help_func("Available filters:", _G.nook.rule.filter)
+_G.nook.rule.sort["?"]   = create_help_func("Available sort fields:", _G.nook.rule.sort)
+
+-----------------------------------------------------------------------------
+-- load data
+-----------------------------------------------------------------------------
 
 -- Validate entry data against struct definition
 local function validate_entry(t)
+  local rule = _G.nook.rule
   for key, value in pairs(t) do
     if not rule.struct[key] then
       print("error: key '" .. key .. "' is not defined in struct")
@@ -406,131 +741,149 @@ local function validate_entry(t)
 end
 
 -- Load and validate data entries
-local data = {}
+_G.nook.data = {}
 function _G.entry(t)
   validate_entry(t)
-  table.insert(data, t)
+  table.insert(_G.nook.data, t)
 end
+local data_file = _G.nook.dir .. "/data/" .. _G.nook.name .. ".lua"
 safe_dofile(data_file)
 
--- Table filter utility
-function table.filter(t, predicate)
-  local result = {}
-  for _, item in ipairs(t) do
-    if predicate(item) then
-      table.insert(result, item)
-    end
-  end
-  return result
-end
+-----------------------------------------------------------------------------
+-- trigger
+-----------------------------------------------------------------------------
 
--- Apply filters with arguments support and AND logic
-local filter_opt = parser:getopt("filter")
-local filter_funcs = {}
-if filter_opt.used then
-  for _, expr in ipairs(filter_opt.args) do
-    -- Parse filter expression: "func" or "func:a1,a2,a3"
-    local filter_name, args_str = expr:match("^([^:]+):?(.*)$")
-    local filter_func = rule.filter[filter_name]
+local trigger_priority = {
+  "format", -- high
+  "filter",
+  "sort",
+  "output",
+  "update", -- low
+}
 
-    if not filter_func then
-      print("error: filter '" .. filter_name .. "' is not defined")
-      os.exit(1)
-    end
-    if filter_name == "?" then filter_func() end
+-- Apply filters with arguments support and AND/NOT logic
+_G.nook.trigger.filter = function()
+  local filter_opt = parser:getopt("filter")
+  local filter_funcs = {}
+  if filter_opt.used then
+    for _, expr in ipairs(filter_opt.args) do
+      -- Parse filter expression: "func" or "func:a1,a2,a3"
+      local filter_name, args_str = expr:match("^([^:]+):?(.*)$")
+      local filter_func = _G.nook.rule.filter[filter_name]
 
-    -- Split comma-separated arguments
-    local args = {}
-    if args_str ~= "" then
-      for arg in args_str:gmatch("[^,]+") do
-        table.insert(args, arg)
+      if not filter_func then
+        print("error: filter '" .. filter_name .. "' is not defined")
+        os.exit(1)
       end
+      if filter_name == "?" then filter_func() end
+
+      -- Split comma-separated arguments
+      local args = {}
+      if args_str ~= "" then
+        for arg in args_str:gmatch("[^,]+") do
+          table.insert(args, arg)
+        end
+      end
+
+      -- Add filter with unpacked arguments (multiple filters = AND)
+      table.insert(filter_funcs, function(item)
+        return filter_func(item, table.unpack(args))
+      end)
     end
 
-    -- Add filter with unpacked arguments (multiple filters = AND)
-    table.insert(filter_funcs, function(item)
-      return filter_func(item, table.unpack(args))
-    end)
+    -- Apply invert
+    if parser:getopt("invert").used then
+      _G.nook.data = table.filter(_G.nook.data, function(item)
+        for _, filter_func in ipairs(filter_funcs) do
+          if filter_func(item) then return false end
+        end
+        return true
+      end)
+    else
+      _G.nook.data = table.filter(_G.nook.data, function(item)
+        for _, filter_func in ipairs(filter_funcs) do
+          if not filter_func(item) then return false end
+        end
+        return true
+      end)
+    end
   end
-end
-
--- Apply invert
-if parser:getopt("invert").used then
-  data = table.filter(data, function(item)
-    for _, filter_func in ipairs(filter_funcs) do
-      if filter_func(item) then return false end
-    end
-    return true
-  end)
-else
-  data = table.filter(data, function(item)
-    for _, filter_func in ipairs(filter_funcs) do
-      if not filter_func(item) then return false end
-    end
-    return true
-  end)
 end
 
 -- Apply sorting and reverse order
-local sort_opt = parser:getopt("sort")
-if sort_opt.used then
-  local sort_name = sort_opt.first_arg
-  local sort_func = rule.sort[sort_name]
+_G.nook.trigger.sort = function()
+  local sort_opt = parser:getopt("sort")
+  if sort_opt.used then
+    local sort_name = sort_opt.first_arg
+    local sort_func = _G.nook.rule.sort[sort_name]
 
-  if not sort_func then
-    print("error: sort '" .. sort_name .. "' is not defined")
-    os.exit(1)
-  end
-  if sort_name == "?" then sort_func() end
-
-  table.sort(data, sort_func)
-
-  -- Reverse sorted table if reverse option is used
-  if parser:getopt("reverse").used then
-    local reversed = {}
-    for i = #data, 1, -1 do
-      table.insert(reversed, data[i])
+    if not sort_func then
+      print("error: sort '" .. sort_name .. "' is not defined")
+      os.exit(1)
     end
-    data = reversed
+    if sort_name == "?" then sort_func() end
+
+    table.sort(_G.nook.data, sort_func)
+
+    -- Reverse sorted table if reverse option is used
+    if parser:getopt("reverse").used then
+      local data = _G.nook.data
+      local len = #data
+      for i = 1, math.floor(len / 2) do
+        local j = len - i + 1
+        data[i], data[j] = data[j], data[i]
+      end
+    end
   end
 end
 
 -- Get output formatter
-local format_name = parser:getopt("format").first_arg
-local formatter = rule.format[format_name]
-if not formatter then
-  print("error: format '" .. format_name .. "' not defined")
-  os.exit(1)
-end
-if format_name == "?" then formatter() end
-
--- Generate formatted output lines
-local output_lines = {}
-for _, entry in ipairs(data) do
-  table.insert(output_lines, formatter(entry))
-end
-
--- Write output to file if -o is used
-local output_opt = parser:getopt("output")
-if output_opt.used then
-  local file_path = output_opt.first_arg
-  local file = io.open(file_path, "w")
-  if not file then
-    print("error: cannot write to output file: " .. file_path)
+_G.nook.trigger.format = function()
+  local format_name = parser:getopt("format").first_arg
+  local format_func = _G.nook.rule.format[format_name]
+  if not format_func then
+    print("error: format '" .. format_name .. "' not defined")
     os.exit(1)
   end
-  for _, line in ipairs(output_lines) do
-    file:write(line .. "\n")
+  if format_name == "?" then format_func() end
+  _G.nook.formatter = format_func
+end
+
+-- Write output to file
+_G.nook.trigger.output = function()
+  local output_opt = parser:getopt("output")
+  if output_opt.used then
+    local file_path = output_opt.first_arg
+    local file = io.open(file_path, "w")
+    if not file then
+      print("error: cannot write to output file: " .. file_path)
+      os.exit(1)
+    end
+    for _, entry in ipairs(_G.nook.data) do
+      file:write(_G.nook.formatter(entry) .. "\n")
+    end
+    file:close()
+    print("output saved to: " .. file_path)
   end
-  file:close()
-  print("output saved to: " .. file_path)
 end
 
--- Print list to console
-for _, line in ipairs(output_lines) do
-  print(line)
+-- Update data file
+_G.nook.trigger.update = function()
+  local update_opt = parser:getopt("update")
+  if update_opt.used then
+    -- TODO
+  end
 end
 
---===========================================================================
--- nook end
---===========================================================================
+-----------------------------------------------------------------------------
+-- run trigger
+-----------------------------------------------------------------------------
+
+for _, v in ipairs(trigger_priority) do
+  _G.nook.trigger[v]()
+end
+
+-- Output to console
+for _, entry in ipairs(_G.nook.data) do
+  print(_G.nook.formatter(entry))
+end

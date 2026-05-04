@@ -13,21 +13,24 @@ A simple **rule-based CLI tool** for managing structured data.
 ---
 
 ## Quick Start
+
+Check the config file `.nookini.lua`
+
 ```bash
 # Show help
 lua nook.lua -h
 
 # List entries
-lua nook.lua -n todo -d example
+lua nook.lua
 
 # Filter entries
-lua nook.lua -n todo -d example -f status:done
+lua nook.lua -f status:done
 
 # Sort entries
-lua nook.lua -n todo -d example -s date
+lua nook.lua -s date
 
 # Custom output format
-lua nook.lua -n todo -d example -t color
+lua nook.lua -t color
 
 # List available options
 lua nook.lua -n todo -d example -f ?
@@ -45,13 +48,13 @@ For full documentation, see **MANUAL.md**.
 put this to **.bashrc**.
 Put this into `~/.bashrc`
 ```bash
-eval "$(lua /path/to/noo.lua --init bash)"
+eval "$(lua /path/to/noo.lua --start bash)"
 ```
 
 - **powershell**
 Put this into your PowerShell profile (`$PROFILE`):
 ```powershell
-Invoke-Expression (& { (lua /path/to/nook.lua --init powershell) -join "`n" })
+Invoke-Expression (& { (lua /path/to/nook.lua --start powershell) -join "`n" })
 ```
 
 If the profile does not exist, run this to create it:

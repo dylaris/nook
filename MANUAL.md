@@ -103,6 +103,22 @@ entry{
 lua nook.lua -h
 ```
 
+## Initialize Environment
+Create default rule, data, and config files automatically.
+- `-I, --init`         initialize rule/data/config (requires `-n`)
+
+```bash
+lua nook.lua -n todo --init
+```
+
+## Show Current Config
+View loaded configuration and file path.
+- `--config`           show active config and values
+
+```bash
+lua nook.lua --config
+```
+
 ## Target
 Specify the entry type and base directory.
 - `-n, --name NAME`   entry type (required)
@@ -118,7 +134,7 @@ Set output format.
 - `-t ?` list available formats
 
 ```bash
-lua nook.lua -n todo -l -t color
+lua nook.lua -n todo -t color
 ```
 
 ## Filter
@@ -158,3 +174,18 @@ Write formatted results to a file.
 ```bash
 lua nook.lua -n todo -o output.txt
 ```
+
+---
+
+# Config File
+Default config file: `.nookini.lua`
+You can also use the environment variable: `NOOKINI`
+
+Configurable items:
+- `dir`
+- `name`
+- `format`
+- `filter`
+- `sort`
+- `output`
+- `update`
