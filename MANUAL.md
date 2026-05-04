@@ -167,13 +167,26 @@ Sort entries.
 lua nook.lua -n todo -s date -r
 ```
 
-## Output to File
+## Update
+Update matched entries.
+- `-u, --update UPDATE`
+- `-u ?` list available updates
+
+Syntax:
+```
+-u func
+-u func:arg1,arg2
+-u func1:a func2:b
+```
+
+## Output
 Write formatted results to a file.
 - `-o, --output PATH`
 
 ```bash
 lua nook.lua -n todo -o output.txt
 ```
+
 
 ---
 

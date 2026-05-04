@@ -3,7 +3,7 @@ return {
   name = "todo",
   format = "brief",
   filter = nil,
-  sort = nil,
+  sort = "date",
   output = nil,
   update = nil,
 }

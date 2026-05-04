@@ -334,6 +334,21 @@ end
 -- misc
 -----------------------------------------------------------------------------
 
+local function serialize_entry(e)
+  local fields = {}
+  for k, v in pairs(e) do
+    if k ~= "__ignore" then
+      local with_quote = true
+      if type(v) == "number" or type(v) == "boolean" then
+        with_quote = false
+      end
+      vs = with_quote and string.format("%q", tostring(v)) or tostring(v)
+      table.insert(fields, string.format("%s = %s", k, vs))
+    end
+  end
+  return "entry{ " .. table.concat(fields, ", ") .. " }"
+end
+
 local function write_to_file(path, content)
   local f = io.open(path, "w")
   if not f then
@@ -366,14 +381,12 @@ local function safe_dofile(path)
   return ret
 end
 
-function table.filter(t, predicate)
-  local result = {}
+function filter(t, predicate)
   for _, item in ipairs(t) do
     if predicate(item) then
-      table.insert(result, item)
+      item.__ignore = false
     end
   end
-  return result
 end
 
 local rule_template = [[
@@ -440,13 +453,19 @@ return {
 
     search = function(e, keyword)
       return e.title:lower():find(keyword:lower(), 1, true) ~= nil
-    end
+    end,
   },
 
   sort = {
     date = function(a, b)
       return a.date > b.date
     end,
+  },
+
+  update = {
+    status = function(e, s)
+      e.status = s
+    end
   },
 }
 ]]
@@ -464,10 +483,11 @@ _G.nook = {
   dir = nil,
   name = nil,
   rule = nil,
-  data = nil,
+  data = { raw = nil, process = nil },
   trigger = {},
   action = {},
   formatter = nil,
+  passthrough = true,
 }
 
 local default_config = {
@@ -681,11 +701,10 @@ local rule_file = _G.nook.dir .. "/rule/" .. _G.nook.name .. ".lua"
 _G.nook.rule = safe_dofile(rule_file)
 
 -- Check top-level required rule fields
-local required = { "struct", "format", "filter", "sort" }
+local required = { "struct", "format", "filter", "sort", "update" }
 for _, key in ipairs(required) do
   if not _G.nook.rule[key] then
-    print("error: rule missing required top-level key: " .. key)
-    os.exit(1)
+    err.fatal("error: rule missing required top-level key: " .. key)
   end
 end
 
@@ -693,15 +712,15 @@ end
 local format_required = { "brief" }
 for _, key in ipairs(format_required) do
   if not _G.nook.rule.format[key] then
-    print("error: rule.format missing required function: " .. key)
-    os.exit(1)
+    err.fatal("error: rule.format missing required function: " .. key)
   end
 end
 
 -- Inject help option "?" into rule modules
-_G.nook.rule.format["?"] = create_help_func("Available output formats:", _G.nook.rule.format)
-_G.nook.rule.filter["?"] = create_help_func("Available filters:", _G.nook.rule.filter)
-_G.nook.rule.sort["?"]   = create_help_func("Available sort fields:", _G.nook.rule.sort)
+_G.nook.rule.format["?"] = create_help_func("Output formats available:", _G.nook.rule.format)
+_G.nook.rule.filter["?"] = create_help_func("Filters available:", _G.nook.rule.filter)
+_G.nook.rule.sort["?"]   = create_help_func("Sort methods available:", _G.nook.rule.sort)
+_G.nook.rule.update["?"] = create_help_func("Update operations available:", _G.nook.rule.update)
 
 -----------------------------------------------------------------------------
 -- load data
@@ -712,8 +731,7 @@ local function validate_entry(t)
   local rule = _G.nook.rule
   for key, value in pairs(t) do
     if not rule.struct[key] then
-      print("error: key '" .. key .. "' is not defined in struct")
-      os.exit(1)
+      err.fatal("error: key '" .. key .. "' is not defined in struct")
     end
 
     local def = rule.struct[key]
@@ -728,23 +746,23 @@ local function validate_entry(t)
         end
       end
       if not valid then
-        print("error: invalid value for " .. key .. ": '" .. value .. "'")
-        os.exit(1)
+        err.fatal("error: invalid value for " .. key .. ": '" .. value .. "'")
       end
     else
       if type(value) ~= def_type then
-        print("error: " .. key .. " expects " .. def_type .. ", got " .. type(value))
-        os.exit(1)
+        err.fatal("error: " .. key .. " expects " .. def_type .. ", got " .. type(value))
       end
     end
   end
 end
 
 -- Load and validate data entries
-_G.nook.data = {}
+_G.nook.data.raw = {}
+_G.nook.data.process = _G.nook.data.raw
 function _G.entry(t)
   validate_entry(t)
-  table.insert(_G.nook.data, t)
+  t.__ignore = true
+  table.insert(_G.nook.data.raw, t)
 end
 local data_file = _G.nook.dir .. "/data/" .. _G.nook.name .. ".lua"
 safe_dofile(data_file)
@@ -757,8 +775,8 @@ local trigger_priority = {
   "format", -- high
   "filter",
   "sort",
-  "output",
-  "update", -- low
+  "update",
+  "output", -- low
 }
 
 -- Apply filters with arguments support and AND/NOT logic
@@ -766,14 +784,14 @@ _G.nook.trigger.filter = function()
   local filter_opt = parser:getopt("filter")
   local filter_funcs = {}
   if filter_opt.used then
+    _G.nook.passthrough = false
     for _, expr in ipairs(filter_opt.args) do
       -- Parse filter expression: "func" or "func:a1,a2,a3"
       local filter_name, args_str = expr:match("^([^:]+):?(.*)$")
       local filter_func = _G.nook.rule.filter[filter_name]
 
       if not filter_func then
-        print("error: filter '" .. filter_name .. "' is not defined")
-        os.exit(1)
+        err.fatal("error: filter '" .. filter_name .. "' is not defined")
       end
       if filter_name == "?" then filter_func() end
 
@@ -793,14 +811,14 @@ _G.nook.trigger.filter = function()
 
     -- Apply invert
     if parser:getopt("invert").used then
-      _G.nook.data = table.filter(_G.nook.data, function(item)
+      filter(_G.nook.data.process, function(item)
         for _, filter_func in ipairs(filter_funcs) do
           if filter_func(item) then return false end
         end
         return true
       end)
     else
-      _G.nook.data = table.filter(_G.nook.data, function(item)
+      filter(_G.nook.data.process, function(item)
         for _, filter_func in ipairs(filter_funcs) do
           if not filter_func(item) then return false end
         end
@@ -818,16 +836,22 @@ _G.nook.trigger.sort = function()
     local sort_func = _G.nook.rule.sort[sort_name]
 
     if not sort_func then
-      print("error: sort '" .. sort_name .. "' is not defined")
-      os.exit(1)
+      err.fatal("error: sort '" .. sort_name .. "' is not defined")
     end
     if sort_name == "?" then sort_func() end
 
-    table.sort(_G.nook.data, sort_func)
+    local sorted_data = {}
+    for _, item in ipairs(_G.nook.data.process) do
+      if _G.nook.passthrough or not item.__ignore then
+        table.insert(sorted_data, item)
+      end
+    end
+    _G.nook.data.process = sorted_data
+    table.sort(_G.nook.data.process, sort_func)
 
     -- Reverse sorted table if reverse option is used
     if parser:getopt("reverse").used then
-      local data = _G.nook.data
+      local data = _G.nook.data.process
       local len = #data
       for i = 1, math.floor(len / 2) do
         local j = len - i + 1
@@ -842,8 +866,7 @@ _G.nook.trigger.format = function()
   local format_name = parser:getopt("format").first_arg
   local format_func = _G.nook.rule.format[format_name]
   if not format_func then
-    print("error: format '" .. format_name .. "' not defined")
-    os.exit(1)
+    err.fatal("error: format '" .. format_name .. "' not defined")
   end
   if format_name == "?" then format_func() end
   _G.nook.formatter = format_func
@@ -856,11 +879,12 @@ _G.nook.trigger.output = function()
     local file_path = output_opt.first_arg
     local file = io.open(file_path, "w")
     if not file then
-      print("error: cannot write to output file: " .. file_path)
-      os.exit(1)
+      err.fatal("error: cannot write to output file: " .. file_path)
     end
-    for _, entry in ipairs(_G.nook.data) do
-      file:write(_G.nook.formatter(entry) .. "\n")
+    for _, item in ipairs(_G.nook.data.process) do
+      if _G.nook.passthrough or not item.__ignore then
+        file:write(_G.nook.formatter(item) .. "\n")
+      end
     end
     file:close()
     print("output saved to: " .. file_path)
@@ -871,7 +895,38 @@ end
 _G.nook.trigger.update = function()
   local update_opt = parser:getopt("update")
   if update_opt.used then
-    -- TODO
+    for _, expr in ipairs(update_opt.args) do
+      -- Parse update expression: "func" or "func:a1,a2,a3"
+      local update_name, args_str = expr:match("^([^:]+):?(.*)$")
+      local update_func = _G.nook.rule.update[update_name]
+
+      if not update_func then
+        err.fatal("error: update '" .. update_name .. "' is not defined")
+      end
+      if update_name == "?" then update_func() end
+
+      -- Split comma-separated arguments
+      local args = {}
+      if args_str ~= "" then
+        for arg in args_str:gmatch("[^,]+") do
+          table.insert(args, arg)
+        end
+      end
+
+      -- Update entries
+      for _, item in ipairs(_G.nook.data.process) do
+        if _G.nook.passthrough or not item.__ignore then
+          update_func(item, table.unpack(args))
+        end
+      end
+    end
+
+    -- Write back to data file
+    local lines = {}
+    for _, item in ipairs(_G.nook.data.raw) do
+      table.insert(lines, serialize_entry(item))
+    end
+    write_to_file(data_file, table.concat(lines, "\n"))
   end
 end
 
@@ -884,6 +939,8 @@ for _, v in ipairs(trigger_priority) do
 end
 
 -- Output to console
-for _, entry in ipairs(_G.nook.data) do
-  print(_G.nook.formatter(entry))
+for _, item in ipairs(_G.nook.data.process) do
+  if _G.nook.passthrough or not item.__ignore then
+    print(_G.nook.formatter(item))
+  end
 end

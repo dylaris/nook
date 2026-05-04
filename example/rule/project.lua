@@ -31,12 +31,12 @@ return {
       local d = os.date("*t")
       return e.date == string.format("%04d-%02d-%02d", d.year, d.month, d.day)
     end,
-    before = function(e, d) return e.date < d end,
-    after = function(e, d) return e.date > d end,
-    search = function(e, kw) return e.name:lower():find(kw:lower(), 1, true) end
   },
 
   sort = {
     date = function(a,b) return a.date > b.date end,
-  }
+  },
+
+  update = {
+  },
 }

@@ -34,10 +34,6 @@ return {
       return e.status == status
     end,
 
-    title = function(e, title)
-      return e.title == title
-    end,
-
     today = function(e)
       local now = os.date("*t")
       local today_str = string.format("%04d-%02d-%02d", now.year, now.month, now.day)
@@ -54,12 +50,22 @@ return {
 
     search = function(e, keyword)
       return e.title:lower():find(keyword:lower(), 1, true) ~= nil
-    end
+    end,
   },
 
   sort = {
     date = function(a, b)
       return a.date > b.date
     end,
+  },
+
+  update = {
+    status = function(e, s)
+      e.status = s
+    end,
+
+    title = function(e, s)
+      e.title = e.title .. " + " .. s
+    end
   },
 }

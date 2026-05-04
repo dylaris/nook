@@ -18,7 +18,7 @@ return {
       else
         return "\27[31m" .. e.date .. " | -" .. string.format("%6.2f", e.amount) .. " | " .. e.category .. " | " .. e.note .. "\27[0m"
       end
-    end
+    end,
   },
 
   filter = {
@@ -31,10 +31,14 @@ return {
     end,
     before = function(e, d) return e.date < d end,
     after = function(e, d) return e.date > d end,
+    list = function(e) return true end,
   },
 
   sort = {
     date = function(a,b) return a.date > b.date end,
     amount = function(a,b) return a.amount > b.amount end,
-  }
+  },
+
+  update = {
+  },
 }
