@@ -32,15 +32,16 @@ lua nook.lua -s date
 # Custom output format
 lua nook.lua -t color
 
-# Output to file
-lua nook.lua -o output.txt
-
 # Update data file
 lua nook.lua -f status:done -u done
+
+# Exec filter result and disable echo
+lua nook.lua -x count -q
 
 # List available options
 lua nook.lua -n todo -d example -f ?
 lua nook.lua -u ?
+lua nook.lua -x ?
 lua nook.lua -n money -d example -s ?
 lua nook.lua -n project -d example -t ?
 ```

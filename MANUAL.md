@@ -128,6 +128,11 @@ Specify the entry type and base directory.
 lua nook.lua -n todo -d example
 ```
 
+## Quiet
+By default, nook echoes the filter result to the console. This can be annoying when you use `exec` to operate entries and only want to print your custom output.
+
+- `-q, --quiet`
+
 ## Format
 Set output format.
 - `-t, --format FMT`
@@ -179,14 +184,19 @@ Syntax:
 -u func1:a func2:b
 ```
 
-## Output
-Write formatted results to a file.
-- `-o, --output PATH`
+## Exec
+Exec matched entries.
+- `-x, --exec EXEC`
+- `-x ?` list available ekxecs
 
-```bash
-lua nook.lua -n todo -o output.txt
+Syntax:
+```
+-x func
+-x func:arg1,arg2
+-x func1:a func2:b
 ```
 
+**The difference between `update` and `exec` is that `exec` operates on the filtered entries but does **not** modify the data file.**
 
 ---
 
@@ -200,5 +210,5 @@ Configurable items:
 - `format`
 - `filter`
 - `sort`
-- `output`
 - `update`
+- `exec`

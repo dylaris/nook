@@ -68,4 +68,10 @@ return {
       e.title = e.title .. " + " .. s
     end
   },
+
+  exec = {
+    count = function(tbl)
+      print("count: " .. #tbl)
+    end
+  }
 }
