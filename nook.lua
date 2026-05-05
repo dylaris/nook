@@ -390,11 +390,23 @@ function filter(t, predicate)
 end
 
 local rule_template = [[
+local Color = {
+  reset   = "\27[0m",
+  red     = "\27[31m",
+  green   = "\27[32m",
+  yellow  = "\27[33m",
+  blue    = "\27[34m",
+  pink    = "\27[35m",
+  cyan    = "\27[36m",
+  gray    = "\27[90m",
+}
+
 return {
   struct = {
     title = "string",
     status = { "pending", "doing", "done", "cancelled", "postpone", "blocked" },
     date = "string",
+    tag = "string",
   },
 
   format = {
@@ -403,17 +415,6 @@ return {
     end,
 
     color = function(e)
-      local Color = {
-        reset   = "\27[0m",
-        red     = "\27[31m",
-        green   = "\27[32m",
-        yellow  = "\27[33m",
-        blue    = "\27[34m",
-        pink    = "\27[35m",
-        cyan    = "\27[36m",
-        gray    = "\27[90m",
-      }
-
       local prefix = ""
       if e.status == "pending" then
         prefix = Color.blue
@@ -435,45 +436,38 @@ return {
   },
 
   filter = {
-    status = function(e, s)
-      return e.status == s
+    status = function(e, s) return e.status == s end,
+    tag = function(e, ...)
+      for _, t in ipairs({...}) do
+        if e.tag:match(t) then return true end
+      end
+      return false
     end,
-
+    date = function(e, d) return e.date == d end,
     today = function(e)
       local now = os.date("*t")
       local today_str = string.format("%04d-%02d-%02d", now.year, now.month, now.day)
       return e.date == today_str
     end,
-
-    before = function(e, d)
-      return e.date < d
-    end,
-
-    after = function(e, d)
-      return e.date > d
-    end,
-
+    before = function(e, d) return e.date < d end,
+    after = function(e, d) return e.date > d end,
     search = function(e, keyword)
       return e.title:lower():find(keyword:lower(), 1, true) ~= nil
     end,
   },
 
   sort = {
-    date = function(a, b)
-      return a.date > b.date
-    end,
+    date = function(a, b) return a.date > b.date end,
   },
 
   update = {
-    status = function(e, s)
-      e.status = s
-    end
+    status = function(e, s) e.status = s end,
+    done = function(e) e.status = "done" end,
+    doing = function(e) e.status = "doing" end,
   },
 
   exec = {
-    count = function(tbl)
-      print("count: " .. #tbl)
-    end,
+    count = function(tbl) print("count: " .. #tbl) end,
   }
 }
 ]]
