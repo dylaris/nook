@@ -1,4 +1,4 @@
-entry{ type = "expense", category = "food", amount = 25.5, date = "2026-05-03", note = "Lunch" }
+entry{ type = "expense", category = "food", amount = 25.5, date = "2026-05-03", note = "Lunch", tag = { "a", "b" } }
 entry{ type = "expense", category = "traffic", amount = 12.0, date = "2026-05-03", note = "Bus and subway" }
 entry{ type = "income", category = "salary", amount = 12000, date = "2026-05-01", note = "May salary" }
 entry{ type = "expense", category = "shop", amount = 199.9, date = "2026-05-02", note = "Buy keyboard" }

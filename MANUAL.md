@@ -150,7 +150,7 @@ Filter entries with support for parameters and AND logic.
 Syntax:
 ```
 -f func
--f func:arg1,arg2
+-f func:arg1+arg2     (shell may expand special chars, use quotes if needed)
 -f func1:a func2:b    (AND logic)
 ```
 
@@ -180,7 +180,7 @@ Update matched entries.
 Syntax:
 ```
 -u func
--u func:arg1,arg2
+-u func:arg1+arg2     (shell may expand special chars, use quotes if needed)
 -u func1:a func2:b
 ```
 
@@ -192,7 +192,7 @@ Exec matched entries.
 Syntax:
 ```
 -x func
--x func:arg1,arg2
+-x func:arg1+arg2     (shell may expand special chars, use quotes if needed)
 -x func1:a func2:b
 ```
 

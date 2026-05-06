@@ -5,6 +5,7 @@ return {
     amount = "number",
     date = "string",
     note = "string",
+    tag = "table",
   },
 
   format = {

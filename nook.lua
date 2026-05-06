@@ -334,16 +334,23 @@ end
 -- misc
 -----------------------------------------------------------------------------
 
+local function serialize_value(v)
+  if type(v) == "table" then
+    return serialize_entry(v)
+  elseif type(v) == "string" then
+    return string.format("%q", v)
+  elseif type(v) == "number" or type(v) == "boolean" then
+    return tostring(v)
+  else
+    return string.format("%q", tostring(v))
+  end
+end
+
 local function serialize_entry(e)
   local fields = {}
   for k, v in pairs(e) do
     if k ~= "__ignore" then
-      local with_quote = true
-      if type(v) == "number" or type(v) == "boolean" then
-        with_quote = false
-      end
-      vs = with_quote and string.format("%q", tostring(v)) or tostring(v)
-      table.insert(fields, string.format("%s = %s", k, vs))
+      table.insert(fields, string.format("%s = %s", k, serialize_value(v)))
     end
   end
   return "entry{ " .. table.concat(fields, ", ") .. " }"
@@ -740,9 +747,9 @@ local function validate_entry(t)
     end
 
     local def = rule.struct[key]
-    local def_type = type(def) == "table" and "table" or def
+    local def_type = type(def) == "table" and "enum" or def
 
-    if def_type == "table" then
+    if def_type == "enum" then
       local valid = false
       for _, enum_val in ipairs(def) do
         if value == enum_val then
@@ -808,10 +815,10 @@ _G.nook.trigger.filter = function()
       end
       if filter_name == "?" then filter_func() end
 
-      -- Split comma-separated arguments
+      -- Split plus-separated arguments
       local args = {}
       if args_str ~= "" then
-        for arg in args_str:gmatch("[^,]+") do
+        for arg in args_str:gmatch("[^+]+") do
           table.insert(args, arg)
         end
       end
@@ -899,10 +906,10 @@ _G.nook.trigger.update = function()
       end
       if update_name == "?" then update_func() end
 
-      -- Split comma-separated arguments
+      -- Split plus-separated arguments
       local args = {}
       if args_str ~= "" then
-        for arg in args_str:gmatch("[^,]+") do
+        for arg in args_str:gmatch("[^+]+") do
           table.insert(args, arg)
         end
       end
@@ -949,10 +956,10 @@ _G.nook.trigger.exec = function()
       end
       if exec_name == "?" then exec_func() end
 
-      -- Split comma-separated arguments
+      -- Split plus-separated arguments
       local args = {}
       if args_str ~= "" then
-        for arg in args_str:gmatch("[^,]+") do
+        for arg in args_str:gmatch("[^+]+") do
           table.insert(args, arg)
         end
       end
