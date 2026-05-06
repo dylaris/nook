@@ -334,26 +334,59 @@ end
 -- misc
 -----------------------------------------------------------------------------
 
-local function serialize_value(v)
-  if type(v) == "table" then
-    return serialize_entry(v)
-  elseif type(v) == "string" then
-    return string.format("%q", v)
-  elseif type(v) == "number" or type(v) == "boolean" then
-    return tostring(v)
+local function check_array(arr)
+  if type(arr) ~= "table" then
+    return false
+  end
+
+  for k, v in pairs(arr) do
+    if type(k) ~= "number" or k < 1 or math.floor(k) ~= k then
+      return false
+    end
+  end
+
+  return true
+end
+
+local function serialize_table(t, level)
+  level = level or 1
+  local indent = string.rep("  ", level)
+  local fields = {}
+
+  for k, v in pairs(t) do
+    if k ~= "__ignore" then
+      local key_str = tostring(k)
+      local value_str
+      local kv_str
+
+      if type(v) == "table" then
+        value_str = serialize_table(v, level + 1)
+      elseif type(v) == "string" then
+        value_str = string.format("%q", v)
+      elseif type(v) == "number" or type(v) == "boolean" then
+        value_str = tostring(v)
+      else
+        value_str = string.format("%q", tostring(v))
+      end
+
+      if check_array(t) then
+        kv_str = value_str
+      else
+        kv_str = key_str .. " = " .. value_str
+      end
+      table.insert(fields, string.format("%s%s", indent, kv_str))
+    end
+  end
+
+  if level == 1 then
+    return "entry{\n" .. table.concat(fields, ",\n") .. "\n}"
   else
-    return string.format("%q", tostring(v))
+    return "{\n" .. table.concat(fields, ",\n") .. "\n" .. string.rep("  ", level - 1) .. "}"
   end
 end
 
 local function serialize_entry(e)
-  local fields = {}
-  for k, v in pairs(e) do
-    if k ~= "__ignore" then
-      table.insert(fields, string.format("%s = %s", k, serialize_value(v)))
-    end
-  end
-  return "entry{ " .. table.concat(fields, ", ") .. " }"
+  return serialize_table(e, 1)
 end
 
 local function write_to_file(path, content)
@@ -529,29 +562,12 @@ setmetatable(default_config, {
   end
 })
 
-local function check_string_array(arr)
-  if type(arr) ~= "table" then
-    return false
-  end
-
-  for k, v in pairs(arr) do
-    if type(k) ~= "number" or k < 1 or math.floor(k) ~= k then
-      return false
-    end
-    if type(v) ~= "string" then
-      return false
-    end
-  end
-
-  return true
-end
-
 local config_file = file_exists(".nookini.lua") and ".nookini.lua" or os.getenv("NOOKINI")
 if config_file ~= nil then
   local config = safe_dofile(config_file)
   for k, v in pairs(config) do
     if type(v) == "table" then
-      if not check_string_array(v) then
+      if not check_array(v) then
         err.fatal("error: value of config key: '" .. tostring(k) .. "' should be string array")
       end
     end
