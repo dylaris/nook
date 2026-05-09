@@ -525,7 +525,8 @@ return {
   reduce = {
     count = function(es) print(#es) end
   },
-}]
+}
+]]
 
 local data_template = [[
 -- Data entry structure example:
@@ -609,7 +610,7 @@ parser:add("-r", "--reverse", { nargs = 0,   desc = "reverse sort order" })
 parser:add("-q", "--quiet",   { nargs = 0,   desc = "no echo" })
 parser:add("-x", "--foreach", { nargs = "+", desc = "apply foreach action on filtered entries", default = default_config.foreach })
 parser:add("-X", "--reduce",  { nargs = 1,   desc = "aggregate filtered entries", default = default_config.reduce })
-parser:add("-S", "--sync",    { nargs = 0,   desc = "Save changes back to data file" })
+parser:add("-S", "--sync",    { nargs = 0,   desc = "save changes back to data file" })
 parser:parse()
 
 nook.dir  = parser:getopt("dir").first_arg
