@@ -281,19 +281,65 @@ end
 --===========================================================================
 
 -----------------------------------------------------------------------------
+-- builtin
+-----------------------------------------------------------------------------
+
+_G.color = {
+  reset   = "\27[0m",
+
+  -- foreground
+  fg_black   = "\27[30m",
+  fg_red     = "\27[31m",
+  fg_green   = "\27[32m",
+  fg_yellow  = "\27[33m",
+  fg_blue    = "\27[34m",
+  fg_pink    = "\27[35m",
+  fg_cyan    = "\27[36m",
+  fg_white   = "\27[37m",
+
+  -- foreground (highlight)
+  fg_gray    = "\27[90m",
+  fg_lred    = "\27[91m",
+  fg_lgreen  = "\27[92m",
+  fg_lyellow = "\27[93m",
+  fg_lblue   = "\27[94m",
+  fg_lpink   = "\27[95m",
+  fg_lcyan   = "\27[96m",
+  fg_lwhite  = "\27[97m",
+
+  -- background
+  bg_black   = "\27[40m",
+  bg_red     = "\27[41m",
+  bg_green   = "\27[42m",
+  bg_yellow  = "\27[43m",
+  bg_blue    = "\27[44m",
+  bg_pink    = "\27[45m",
+  bg_cyan    = "\27[46m",
+  bg_white   = "\27[47m",
+
+  -- background (highlight)
+  bg_lgray   = "\27[100m",
+  bg_lred    = "\27[101m",
+  bg_lgreen  = "\27[102m",
+  bg_lyellow = "\27[103m",
+  bg_lblue   = "\27[104m",
+  bg_lpink   = "\27[105m",
+  bg_lcyan   = "\27[106m",
+}
+
+-----------------------------------------------------------------------------
 -- menu
 -----------------------------------------------------------------------------
 
 -- Nook structure overview
 --
--- Global nook table
--- _G.nook = {
+-- nook = {
 --   path      = script self path
 --   dir       = base working directory
 --   name      = entry type name
 --   rule      = load rule definition from rule/name.lua
 --   data      = loaded entry list data
---   trigger   = workflow hooks: format / filter / sort / update / exec
+--   trigger   = workflow hooks: format / filter / sort / foreach / reduce
 --   action    = standalone commands: start / help / config / init
 --   formatter = selected output format function
 -- }
@@ -305,10 +351,10 @@ end
 --
 -- 2. trigger: workflow lifecycle hooks
 --    Run in fixed order, no exit, continue process
---    Order: format → filter → sort → output → update
+--    Order: format → filter → sort → foreach -> reduce
 --
 -- Config system
--- Default keys: dir, name, format, filter, sort, output, update
+-- Default keys: dir, name, format, filter, sort, foreach, reduce
 -- Only support pre-difined config
 -- Load order: local .nookini.lua → env NOOKINI
 -- Config key whitelist, forbid unknown new keys
@@ -319,6 +365,8 @@ end
 --   format  = output render functions
 --   filter  = data filter functions
 --   sort    = data sort compare functions
+--   foreach = data foreach functions
+--   reduce  = data reduce functions
 -- }
 --
 -- Workflow flow
@@ -422,114 +470,81 @@ local function safe_dofile(path)
 end
 
 function filter(t, predicate)
+  local result = {}
   for _, item in ipairs(t) do
     if predicate(item) then
-      item.__ignore = false
+      table.insert(result, item)
     end
   end
+  return result
 end
 
 local rule_template = [[
-local Color = {
-  reset   = "\27[0m",
-  red     = "\27[31m",
-  green   = "\27[32m",
-  yellow  = "\27[33m",
-  blue    = "\27[34m",
-  pink    = "\27[35m",
-  cyan    = "\27[36m",
-  gray    = "\27[90m",
-}
-
 return {
+  -- Data structure definition for entries
   struct = {
-    title = "string",
-    status = { "pending", "doing", "done", "cancelled", "postpone", "blocked" },
-    date = "string",
-    tag = "string",
+    a = "string",               -- String type
+    b = { "apple", "grape" },   -- Enum type (allowed values)
+    c = "table",                -- Table / object type
+    d = "number",               -- Number type
+    e = "boolean",              -- Boolean type
   },
 
+  -- Format output rules
   format = {
-    brief = function(e)
-      return string.format("%s | %s | %s", e.date, e.status, e.title)
-    end,
-
-    color = function(e)
-      local prefix = ""
-      if e.status == "pending" then
-        prefix = Color.blue
-      elseif e.status == "doing" then
-        prefix = Color.yellow
-      elseif e.status == "done" then
-        prefix = Color.green
-      elseif e.status == "cancelled" then
-        prefix = Color.gray
-      elseif e.status == "postpone" then
-        prefix = Color.cyan
-      elseif e.status == "blocked" then
-        prefix = Color.red
-      else
-        prefix = Color.reset
-      end
-      return prefix .. string.format("%s | %s | %s", e.date, e.status, e.title) .. Color.reset
-    end
+    -- Required brief display string
+    -- Params: entry, ...cli_args
+    -- Return: string
+    brief = function(e) return "" end,
   },
 
+  -- Filter rules (keep entry if true)
+  -- Params: entry, ...cli_args
+  -- Return: boolean
   filter = {
     status = function(e, s) return e.status == s end,
-    tag = function(e, ...)
-      for _, t in ipairs({...}) do
-        if e.tag:match(t) then return true end
-      end
-      return false
-    end,
-    date = function(e, d) return e.date == d end,
-    today = function(e)
-      local now = os.date("*t")
-      local today_str = string.format("%04d-%02d-%02d", now.year, now.month, now.day)
-      return e.date == today_str
-    end,
-    before = function(e, d) return e.date < d end,
-    after = function(e, d) return e.date > d end,
-    search = function(e, keyword)
-      return e.title:lower():find(keyword:lower(), 1, true) ~= nil
-    end,
   },
 
+  -- Sort rules (a before b if true)
+  -- Params: entry_a, entry_b, ...cli_args
+  -- Return: boolean
   sort = {
     date = function(a, b) return a.date > b.date end,
   },
 
-  update = {
-    status = function(e, s) e.status = s end,
-    done = function(e) e.status = "done" end,
-    doing = function(e) e.status = "doing" end,
+  -- Foreach update rules
+  -- Params: entry, ...cli_args
+  -- Note: Use --sync to persist changes to file
+  foreach = {
+    status = function(e, s) e.state = s end,
   },
 
-  exec = {
-    count = function(tbl) print("count: " .. #tbl) end,
-  }
-}
-]]
+  -- Reduce / aggregate rules
+  -- Params: entries, ...cli_args
+  -- Return: aggregated result
+  reduce = {
+    count = function(es) print(#es) end
+  },
+}]
 
 local data_template = [[
-entry{ title = "Finish daily code review", status = "wait", date = "2026-01-01" }
+-- Data entry structure example:
+-- entry{ title = "Finish daily code review", status = "wait", date = "2026-01-01" }
 ]]
 
 -----------------------------------------------------------------------------
 -- load default config
 -----------------------------------------------------------------------------
 
-_G.nook = {
+local nook = {
   path = arg[0],
   dir = nil,
   name = nil,
   rule = nil,
-  data = { raw = nil, process = nil },
+  data = { all = nil, list = nil },
   trigger = {},
   action = {},
   formatter = nil,
-  passthrough = true,
   echo = print,
 }
 
@@ -539,8 +554,8 @@ local default_config = {
   filter = nil,
   sort = nil,
   format = "brief",
-  update = nil,
-  exec = nil,
+  foreach = nil,
+  reduce = nil,
 }
 
 local allowed_keys = {
@@ -549,8 +564,8 @@ local allowed_keys = {
   filter = true,
   sort = true,
   format = true,
-  update = true,
-  exec = true
+  foreach = true,
+  reduce = true
 }
 
 setmetatable(default_config, {
@@ -592,12 +607,13 @@ parser:add("-s", "--sort",    { nargs = 1,   desc = "set sort type", default = d
 parser:add("-v", "--invert",  { nargs = 0,   desc = "invert filter result (exclude matched)" })
 parser:add("-r", "--reverse", { nargs = 0,   desc = "reverse sort order" })
 parser:add("-q", "--quiet",   { nargs = 0,   desc = "no echo" })
-parser:add("-u", "--update",  { nargs = "+", desc = "update data file", default = default_config.update })
-parser:add("-x", "--exec",    { nargs = "+", desc = "process filter result (no file change)", default = default_config.exec })
+parser:add("-x", "--foreach", { nargs = "+", desc = "apply foreach action on filtered entries", default = default_config.foreach })
+parser:add("-X", "--reduce",  { nargs = 1,   desc = "aggregate filtered entries", default = default_config.reduce })
+parser:add("-S", "--sync",    { nargs = 0,   desc = "Save changes back to data file" })
 parser:parse()
 
-_G.nook.dir  = parser:getopt("dir").first_arg
-_G.nook.name = parser:getopt("name").first_arg
+nook.dir  = parser:getopt("dir").first_arg
+nook.name = parser:getopt("name").first_arg
 
 -----------------------------------------------------------------------------
 -- define action
@@ -611,20 +627,20 @@ local action_priority = {
 }
 
 -- Initialize shell
-_G.nook.action.start = function()
+nook.action.start = function()
   local start_opt = parser:getopt("start")
   if start_opt.used then
     local sh = start_opt.first_arg
     if sh == "bash" then
       print([[
   nook() {
-    lua "]] .. _G.nook.path .. [[" "$@"
+    lua "]] .. nook.path .. [[" "$@"
   }
   ]])
     elseif sh == "powershell" then
       print([[
   function nook {
-    lua "]] .. _G.nook.path .. [[" @args
+    lua "]] .. nook.path .. [[" @args
   }
   ]])
     end
@@ -633,7 +649,7 @@ _G.nook.action.start = function()
 end
 
 -- Show help information
-_G.nook.action.help = function()
+nook.action.help = function()
   if parser:getopt("help").used then
     parser:print()
     os.exit(0)
@@ -641,7 +657,7 @@ _G.nook.action.help = function()
 end
 
 -- Look config
-_G.nook.action.config = function()
+nook.action.config = function()
   if parser:getopt("config").used then
     if config_file then
       print("===nook default config===")
@@ -667,24 +683,24 @@ return {
   format = "brief",
   filter = nil,
   sort = nil,
-  update = nil,
-  exec = nil,
+  foreach = nil,
+  reduce = nil,
 }
 ]],
-  _G.nook.dir,
-  _G.nook.name
+  nook.dir,
+  nook.name
 )
 
-_G.nook.action.init = function()
+nook.action.init = function()
   if parser:getopt("init").used then
     -- write rule.lua
-    local rule_file = _G.nook.dir .. "/rule/" .. _G.nook.name .. ".lua"
+    local rule_file = nook.dir .. "/rule/" .. nook.name .. ".lua"
     if not file_exists(rule_file) then
       write_to_file(rule_file, rule_template)
     end
 
     -- write data.lua
-    local data_file = _G.nook.dir .. "/data/" .. _G.nook.name .. ".lua"
+    local data_file = nook.dir .. "/data/" .. nook.name .. ".lua"
     if not file_exists(data_file) then
       write_to_file(data_file, data_template)
     end
@@ -703,7 +719,7 @@ end
 -----------------------------------------------------------------------------
 
 for _, v in ipairs(action_priority) do
-  _G.nook.action[v]()
+  nook.action[v]()
 end
 
 -----------------------------------------------------------------------------
@@ -724,13 +740,13 @@ local function create_help_func(title, item_table)
 end
 
 -- Load rule configuration
-local rule_file = _G.nook.dir .. "/rule/" .. _G.nook.name .. ".lua"
-_G.nook.rule = safe_dofile(rule_file)
+local rule_file = nook.dir .. "/rule/" .. nook.name .. ".lua"
+nook.rule = safe_dofile(rule_file)
 
 -- Check top-level required rule fields
-local required = { "struct", "format", "filter", "sort", "update", "exec" }
+local required = { "struct", "format", "filter", "sort", "foreach", "reduce" }
 for _, key in ipairs(required) do
-  if not _G.nook.rule[key] then
+  if not nook.rule[key] then
     err.fatal("error: rule missing required top-level key: " .. key)
   end
 end
@@ -738,17 +754,17 @@ end
 -- Check required format functions
 local format_required = { "brief" }
 for _, key in ipairs(format_required) do
-  if not _G.nook.rule.format[key] then
+  if not nook.rule.format[key] then
     err.fatal("error: rule.format missing required function: " .. key)
   end
 end
 
 -- Inject help option "?" into rule modules
-_G.nook.rule.format["?"] = create_help_func("Output formats available:", _G.nook.rule.format)
-_G.nook.rule.filter["?"] = create_help_func("Filters available:", _G.nook.rule.filter)
-_G.nook.rule.sort["?"]   = create_help_func("Sort methods available:", _G.nook.rule.sort)
-_G.nook.rule.update["?"] = create_help_func("Update operations available:", _G.nook.rule.update)
-_G.nook.rule.exec["?"]   = create_help_func("Exec operations available:", _G.nook.rule.exec)
+nook.rule.format["?"]  = create_help_func("Output formats available:", nook.rule.format)
+nook.rule.filter["?"]  = create_help_func("Filters available:", nook.rule.filter)
+nook.rule.sort["?"]    = create_help_func("Sort methods available:", nook.rule.sort)
+nook.rule.foreach["?"] = create_help_func("Foreach operations available:", nook.rule.foreach)
+nook.rule.reduce["?"]  = create_help_func("Reduce operations available:", nook.rule.reduce)
 
 -----------------------------------------------------------------------------
 -- load data
@@ -756,7 +772,7 @@ _G.nook.rule.exec["?"]   = create_help_func("Exec operations available:", _G.noo
 
 -- Validate entry data against struct definition
 local function validate_entry(t)
-  local rule = _G.nook.rule
+  local rule = nook.rule
   for key, value in pairs(t) do
     if not rule.struct[key] then
       err.fatal("error: key '" .. key .. "' is not defined in struct")
@@ -785,14 +801,14 @@ local function validate_entry(t)
 end
 
 -- Load and validate data entries
-_G.nook.data.raw = {}
-_G.nook.data.process = _G.nook.data.raw
+nook.data.all = {}
+nook.data.list = {}
 function _G.entry(t)
   validate_entry(t)
-  t.__ignore = true
-  table.insert(_G.nook.data.raw, t)
+  table.insert(nook.data.all, t)
+  table.insert(nook.data.list, t)
 end
-local data_file = _G.nook.dir .. "/data/" .. _G.nook.name .. ".lua"
+local data_file = nook.dir .. "/data/" .. nook.name .. ".lua"
 safe_dofile(data_file)
 
 -----------------------------------------------------------------------------
@@ -800,94 +816,94 @@ safe_dofile(data_file)
 -----------------------------------------------------------------------------
 
 local trigger_priority = {
-  "format", -- high
-  "quiet",
+  "quiet",  -- high
+  "format",
   "filter",
   "sort",
-  "update",
-  "exec", -- low
+  "foreach",
+  "reduce",
+  "display", -- low
 }
 
 -- Apply quiet mode
-_G.nook.trigger.quiet = function()
+nook.trigger.quiet = function()
   if parser:getopt("quiet").used then
-    _G.nook.echo = function() end
+    nook.echo = function() end
   end
 end
 
+-- input: func_name:arg1+arg2...
+-- output: (name, args)
+local function parse_expr(expr)
+  local name, args_str = expr:match("^([^:]+):?(.*)$")
+  local args = {}
+  if args_str ~= "" then
+    for arg in args_str:gmatch("[^+]+") do
+      table.insert(args, arg)
+    end
+  end
+  return name, args
+end
+
 -- Apply filters with arguments support and AND/NOT logic
-_G.nook.trigger.filter = function()
-  local filter_opt = parser:getopt("filter")
-  local filter_funcs = {}
-  if filter_opt.used then
-    _G.nook.passthrough = false
-    for _, expr in ipairs(filter_opt.args) do
-      -- Parse filter expression: "func" or "func:a1,a2,a3"
-      local filter_name, args_str = expr:match("^([^:]+):?(.*)$")
-      local filter_func = _G.nook.rule.filter[filter_name]
-
-      if not filter_func then
-        err.fatal("error: filter '" .. filter_name .. "' is not defined")
+nook.trigger.filter = function()
+  local opt = parser:getopt("filter")
+  local funcs = {}
+  if opt.used then
+    for _, expr in ipairs(opt.args) do
+      local func_name, func_args = parse_expr(expr)
+      local func = nook.rule.filter[func_name]
+      if not func then
+        err.fatal("error: filter '" .. func_name .. "' is not defined")
       end
-      if filter_name == "?" then filter_func() end
-
-      -- Split plus-separated arguments
-      local args = {}
-      if args_str ~= "" then
-        for arg in args_str:gmatch("[^+]+") do
-          table.insert(args, arg)
-        end
-      end
+      if func_name == "?" then func() end
 
       -- Add filter with unpacked arguments (multiple filters = AND)
-      table.insert(filter_funcs, function(item)
-        return filter_func(item, table.unpack(args))
+      table.insert(funcs, function(item)
+        return func(item, table.unpack(func_args))
       end)
     end
 
     -- Apply invert
+    local predicate
     if parser:getopt("invert").used then
-      filter(_G.nook.data.process, function(item)
-        for _, filter_func in ipairs(filter_funcs) do
-          if filter_func(item) then return false end
+      predicate = function(item)
+        for _, func in ipairs(funcs) do
+          if func(item) then return false end
         end
         return true
-      end)
+      end
     else
-      filter(_G.nook.data.process, function(item)
-        for _, filter_func in ipairs(filter_funcs) do
-          if not filter_func(item) then return false end
+      predicate = function(item)
+        for _, func in ipairs(funcs) do
+          if not func(item) then return false end
         end
         return true
-      end)
+      end
     end
+    nook.data.list = filter(nook.data.list, predicate)
   end
 end
 
 -- Apply sorting and reverse order
-_G.nook.trigger.sort = function()
-  local sort_opt = parser:getopt("sort")
-  if sort_opt.used then
-    local sort_name = sort_opt.first_arg
-    local sort_func = _G.nook.rule.sort[sort_name]
-
-    if not sort_func then
-      err.fatal("error: sort '" .. sort_name .. "' is not defined")
+nook.trigger.sort = function()
+  local opt = parser:getopt("sort")
+  if opt.used then
+    local func_name, func_args = parse_expr(opt.first_arg)
+    local func = nook.rule.sort[func_name]
+    if not func then
+      err.fatal("error: sort '" .. func_name .. "' is not defined")
     end
-    if sort_name == "?" then sort_func() end
+    if func_name == "?" then func() end
 
-    local sorted_data = {}
-    for _, item in ipairs(_G.nook.data.process) do
-      if _G.nook.passthrough or not item.__ignore then
-        table.insert(sorted_data, item)
-      end
-    end
-    _G.nook.data.process = sorted_data
-    table.sort(_G.nook.data.process, sort_func)
+    -- Sort
+    table.sort(nook.data.list, function(a, b)
+      return func(a, b, table.unpack(func_args))
+    end)
 
     -- Reverse sorted table if reverse option is used
     if parser:getopt("reverse").used then
-      local data = _G.nook.data.process
+      local data = nook.data.list
       local len = #data
       for i = 1, math.floor(len / 2) do
         local j = len - i + 1
@@ -898,92 +914,74 @@ _G.nook.trigger.sort = function()
 end
 
 -- Get output formatter
-_G.nook.trigger.format = function()
-  local format_name = parser:getopt("format").first_arg
-  local format_func = _G.nook.rule.format[format_name]
-  if not format_func then
-    err.fatal("error: format '" .. format_name .. "' not defined")
+nook.trigger.format = function()
+  local func_name = parser:getopt("format").first_arg
+  local func = nook.rule.format[func_name]
+  if not func then
+    err.fatal("error: format '" .. func_name .. "' not defined")
   end
-  if format_name == "?" then format_func() end
-  _G.nook.formatter = format_func
+  if func_name == "?" then func() end
+  nook.formatter = func
 end
 
--- Update data file
-_G.nook.trigger.update = function()
-  local update_opt = parser:getopt("update")
-  if update_opt.used then
-    for _, expr in ipairs(update_opt.args) do
-      -- Parse update expression: "func" or "func:a1,a2,a3"
-      local update_name, args_str = expr:match("^([^:]+):?(.*)$")
-      local update_func = _G.nook.rule.update[update_name]
-
-      if not update_func then
-        err.fatal("error: update '" .. update_name .. "' is not defined")
+-- Process filter result for each entry
+nook.trigger.foreach = function()
+  local opt = parser:getopt("foreach")
+  local funcs = {}
+  if opt.used then
+    for _, expr in ipairs(opt.args) do
+      local func_name, func_args = parse_expr(expr)
+      local func = nook.rule.foreach[func_name]
+      if not func then
+        err.fatal("error: foreach '" .. func_name .. "' is not defined")
       end
-      if update_name == "?" then update_func() end
+      if func_name == "?" then func() end
 
-      -- Split plus-separated arguments
-      local args = {}
-      if args_str ~= "" then
-        for arg in args_str:gmatch("[^+]+") do
-          table.insert(args, arg)
-        end
-      end
-
-      -- Update entries
-      local count = 0
-      for _, item in ipairs(_G.nook.data.process) do
-        if _G.nook.passthrough or not item.__ignore then
-          update_func(item, table.unpack(args))
-          count = count + 1
-        end
-      end
-      _G.nook.echo("update " .. count .. " entries")
+      -- Add foreach with unpacked arguments (multiple foreach = pipeline)
+      table.insert(funcs, function(item)
+        func(item, table.unpack(func_args))
+      end)
     end
 
-    -- Write back to data file
-    local lines = {}
-    for _, item in ipairs(_G.nook.data.raw) do
-      table.insert(lines, serialize_entry(item))
+    -- Foreach
+    for _, item in ipairs(nook.data.list) do
+      for _, func in ipairs(funcs) do func(item) end
     end
-    write_to_file(data_file, table.concat(lines, "\n"))
+
+    -- Apply sync (write back to data file)
+    if parser:getopt("sync").used then
+      local lines = {}
+      for _, item in ipairs(nook.data.all) do
+        table.insert(lines, serialize_entry(item))
+      end
+      write_to_file(data_file, table.concat(lines, "\n"))
+    end
   end
 end
 
--- Process filter result
-_G.nook.trigger.exec = function()
-  local exec_opt = parser:getopt("exec")
-  if exec_opt.used then
-    local exec_entries = {}
-    for _, item in ipairs(_G.nook.data.process) do
-      if _G.nook.passthrough or not item.__ignore then
-        item.__ignore = nil -- the priority of exec must be the lowest
-        table.insert(exec_entries, item)
-      end
+-- Process filter result for the table itself
+nook.trigger.reduce = function()
+  local opt = parser:getopt("reduce")
+  if opt.used then
+    local func_name, func_args = parse_expr(opt.first_arg)
+    local func = nook.rule.reduce[func_name]
+    if not func then
+      err.fatal("error: reduce '" .. func_name .. "' is not defined")
     end
+    if func_name == "?" then func() end
 
-    for _, expr in ipairs(exec_opt.args) do
-      -- Parse exec expression: "func" or "func:a1,a2,a3"
-      local exec_name, args_str = expr:match("^([^:]+):?(.*)$")
-      local exec_func = _G.nook.rule.exec[exec_name]
-
-      if not exec_func then
-        err.fatal("error: exec '" .. exec_name .. "' is not defined")
-      end
-      if exec_name == "?" then exec_func() end
-
-      -- Split plus-separated arguments
-      local args = {}
-      if args_str ~= "" then
-        for arg in args_str:gmatch("[^+]+") do
-          table.insert(args, arg)
-        end
-      end
-
-      -- exec entries
-      exec_func(exec_entries, table.unpack(args))
-    end
+    -- Reduce
+    func(nook.data.list, table.unpack(func_args))
   end
+end
+
+-- Display list to console
+nook.trigger.display = function()
+  nook.echo("<<<<<< -q : quiet mode")
+  for _, item in ipairs(nook.data.list) do
+    nook.echo(nook.formatter(item))
+  end
+  nook.echo(">>>>>>")
 end
 
 -----------------------------------------------------------------------------
@@ -991,12 +989,6 @@ end
 -----------------------------------------------------------------------------
 
 for _, v in ipairs(trigger_priority) do
-  _G.nook.trigger[v]()
+  nook.trigger[v]()
 end
 
--- Output to console
-for _, item in ipairs(_G.nook.data.process) do
-  if _G.nook.passthrough or not item.__ignore then
-    _G.nook.echo(_G.nook.formatter(item))
-  end
-end

@@ -1,7 +1,5 @@
-# nook Manual
-
-## Directory Structure
-- **rule/**: Stores rule definitions (schema, filters, sorters, formatters)
+# Directory Structure
+- **rule/**: Stores rule definitions
 - **data/**: Stores actual entry data
 
 Example:
@@ -18,9 +16,18 @@ data/
 
 ---
 
+# Builtin
+nook provides built-in utilities for writing rules.
+
+- `_G.color`
+  - Predefined ANSI color codes (foreground and background) for console output.
+  - See source code for full color definitions.
+
+---
+
 # How to Write Rules
 A rule is a Lua script that returns a table.
-**struct / format / filter / sort are all required.**
+**struct / format / filter / sort / foreach / reduce are all required.**
 
 ## struct
 Defines the schema (data structure) of entries.
@@ -57,7 +64,8 @@ format = {
 
 ## filter
 Defines filtering logic.
-Functions receive an entry + optional arguments, return a boolean.
+- Params: entry, ...cli_args
+- Return: boolean (keep entry if true)
 
 Example:
 ```lua
@@ -70,12 +78,40 @@ filter = {
 ## sort
 Defines sorting comparators.
 Used directly by `table.sort()`.
-Receives two entries, returns a boolean.
+- Params: entry_a, entry_b, ...cli_args
+- Return: boolean (a before b if true)
 
 Example:
 ```lua
 sort = {
   date = function(a, b) return a.date > b.date end
+}
+```
+
+## foreach
+Defines entry update/process logic.
+- Params: entry, ...cli_args
+- Behavior: modifies entry fields in-memory
+- With `--sync`: writes changes back to data file (map mode)
+
+Example:
+```lua
+foreach = {
+  status = function(e, s) e.status = s end,
+  append  = function(e, txt) e.title = e.title .. txt end
+}
+```
+
+## reduce
+Defines aggregation logic for the entire list.
+- Params: entries, ...cli_args
+- Return: aggregated result (count, sum, avg, etc.)
+
+Example:
+```lua
+reduce = {
+  count = function(ents) return #ents end,
+  total = function(ents) local t=0; for _,e in ipairs(ents)do t=t+e.amount end; return t end
 }
 ```
 
@@ -100,7 +136,7 @@ entry{
 
 ## Help
 ```bash
-lua nook.lua -h
+nook -h
 ```
 
 ## Initialize Environment
@@ -108,7 +144,7 @@ Create default rule, data, and config files automatically.
 - `-I, --init`         initialize rule/data/config (requires `-n`)
 
 ```bash
-lua nook.lua -n todo --init
+nook -n todo --init
 ```
 
 ## Show Current Config
@@ -116,7 +152,7 @@ View loaded configuration and file path.
 - `--config`           show active config and values
 
 ```bash
-lua nook.lua --config
+nook --config
 ```
 
 ## Target
@@ -125,12 +161,12 @@ Specify the entry type and base directory.
 - `-d, --dir DIR`     base directory (default: `.`)
 
 ```bash
-lua nook.lua -n todo -d example
+nook -n todo -d example
 ```
 
 ## Quiet
-By default, nook echoes the filter result to the console. This can be annoying when you use `exec` to operate entries and only want to print your custom output.
-
+Suppress default console output.
+Useful when you only want to show reduce results or custom output.
 - `-q, --quiet`
 
 ## Format
@@ -139,28 +175,24 @@ Set output format.
 - `-t ?` list available formats
 
 ```bash
-lua nook.lua -n todo -t color
+nook -n todo -t color
 ```
 
 ## Filter
-Filter entries with support for parameters and AND logic.
+Filter entries with AND logic.
+**Supports CLI arguments: func:arg1+arg2**
 - `-f, --filter FILTER`
 - `-f ?` list available filters
 
 Syntax:
 ```
 -f func
--f func:arg1+arg2     (shell may expand special chars, use quotes if needed)
+-f func:arg1+arg2
 -f func1:a func2:b    (AND logic)
 ```
 
 Flags:
 - `-v, --invert`       exclude matched entries (NOT)
-
-Note:
-- Do NOT use spaces inside arguments: `a,b` not `a, b`
-- For values with spaces, use quotes: `msg:'hello world'`
-- OR logic is **not supported**.
 
 ## Sort
 Sort entries.
@@ -169,34 +201,57 @@ Sort entries.
 - `-r, --reverse` reverse order
 
 ```bash
-lua nook.lua -n todo -s date -r
+nook -n todo -s date -r
 ```
 
-## Update
-Update matched entries.
-- `-u, --update UPDATE`
-- `-u ?` list available updates
-
-Syntax:
-```
--u func
--u func:arg1+arg2     (shell may expand special chars, use quotes if needed)
--u func1:a func2:b
-```
-
-## Exec
-Exec matched entries.
-- `-x, --exec EXEC`
-- `-x ?` list available ekxecs
+## Foreach (In-Memory Modify)
+Process/modify entries in memory.
+**Supports CLI arguments: func:arg1+arg2**
+- `-x, --foreach FOREACH`
+- `-x ?` list available foreach functions
 
 Syntax:
 ```
 -x func
--x func:arg1+arg2     (shell may expand special chars, use quotes if needed)
+-x func:arg1+arg2
 -x func1:a func2:b
 ```
 
-**The difference between `update` and `exec` is that `exec` operates on the filtered entries but does **not** modify the data file.**
+## Map (Foreach + Save)
+Foreach + **--sync** = persist changes to data file.
+This is equivalent to map & save.
+- `-S, --sync`         write changes to data file
+
+Example:
+```bash
+nook -n todo -f status:pending -x status:done -S
+```
+
+## Reduce
+Aggregate/stat the filtered list.
+**Supports CLI arguments: func:arg1+arg2**
+- `-X, --reduce REDUCE`
+- `-X ?` list available reduce functions
+
+Example:
+```bash
+nook -n todo -f status:pending -X count -q
+```
+
+---
+
+# Important Rule Param Notes
+All rule functions support **fixed params + variable CLI args**:
+- filter:    `func(entry, ...cli_args)`
+- sort:      `func(a, b, ...cli_args)`
+- foreach:   `func(entry, ...cli_args)`
+- reduce:    `func(entries, ...cli_args)`
+- format:    `func(entry, ...cli_args)`
+
+CLI usage format:
+```
+func_name:arg1+arg2+arg3
+```
 
 ---
 
@@ -210,5 +265,6 @@ Configurable items:
 - `format`
 - `filter`
 - `sort`
-- `update`
-- `exec`
+- `foreach`
+- `reduce`
+```

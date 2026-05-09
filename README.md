@@ -1,5 +1,5 @@
 # nook
-A simple **rule-based CLI tool** for managing structured data.
+A simple **rule-based CLI tool** for managing structured data with chainable operations.
 
 ---
 
@@ -8,47 +8,50 @@ A simple **rule-based CLI tool** for managing structured data.
 - **Separation of data and schema**:
   - `rule/NAME.lua` — defines struct, filters, sorters, and formatters.
   - `data/NAME.lua` — stores your actual entries.
-- **Lightweight & extensible**: Build your own data types in seconds.
+- **Lightweight & extensible**: Build custom data types in seconds.
+- **Chainable calls**: Combine filter, sort, foreach, map, reduce in one command.
 
 ---
 
 ## Quick Start
-
 Check the config file `.nookini.lua`
 
 ```bash
 # Show help
-lua nook.lua -h
+nook -h
 
-# List entries
-lua nook.lua
+# List all entries
+nook
 
 # Filter entries
-lua nook.lua -f status:done
+nook -f status:done
 
 # Sort entries
-lua nook.lua -s date
+nook -s date
+
+# Chain: filter + foreach (mark as done)
+nook -f status:pending -x status:done
+
+# Chain: filter + update + save to file
+nook -f status:pending -x status:done -S
+
+# Chain: filter + reduce + quiet output
+nook -f status:pending -X count -q
 
 # Custom output format
-lua nook.lua -t color
+nook -t color
 
-# Update data file
-lua nook.lua -f status:done -u done
-
-# Exec filter result and disable echo
-lua nook.lua -x count -q
-
-# List available options
-lua nook.lua -n todo -d example -f ?
-lua nook.lua -u ?
-lua nook.lua -x ?
-lua nook.lua -n money -d example -s ?
-lua nook.lua -n project -d example -t ?
+# List available rules
+nook -n todo -d example -f ?
+nook -x ?
+nook -X ?
+nook -n money -d example -s ?
+nook -n project -d example -t ?
 ```
 
----
-
 For full documentation, see **MANUAL.md**.
+
+---
 
 ## Install
 

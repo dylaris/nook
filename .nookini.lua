@@ -4,6 +4,6 @@ return {
   format = "brief",
   filter = nil,
   sort = "date",
-  output = nil,
-  update = nil,
+  foreach = nil,
+  reduce = nil,
 }

@@ -40,6 +40,6 @@ return {
     amount = function(a,b) return a.amount > b.amount end,
   },
 
-  update = {},
-  exec = {},
+  foreach = {},
+  reduce = {},
 }

@@ -59,7 +59,7 @@ return {
     end,
   },
 
-  update = {
+  foreach = {
     status = function(e, s)
       e.status = s
     end,
@@ -69,9 +69,7 @@ return {
     end
   },
 
-  exec = {
-    count = function(tbl)
-      print("count: " .. #tbl)
-    end
+  reduce = {
+    count = function(es) print(#es) end,
   }
 }

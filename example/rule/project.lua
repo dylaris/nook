@@ -37,6 +37,6 @@ return {
     date = function(a,b) return a.date > b.date end,
   },
 
-  update = {},
-  exec = {},
+  foreach = {},
+  reduce = {},
 }
