@@ -20,6 +20,9 @@ Check the config file `.nookini.lua`
 # Show help
 nook -h
 
+# Initialize environment
+nook -I -n todo -d .
+
 # List all entries
 nook
 
