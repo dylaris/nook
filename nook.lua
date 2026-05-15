@@ -469,7 +469,7 @@ local function safe_dofile(path)
   return ret
 end
 
-function filter(t, predicate)
+local function filter(t, predicate)
   local result = {}
   for _, item in ipairs(t) do
     if predicate(item) then
@@ -596,7 +596,7 @@ end
 -----------------------------------------------------------------------------
 
 local parser = argparser.new("noooooook")
-parser:add("",   "--start",   { nargs = 1,   desc = "init shell (bash/powershell)", ignore = true })
+parser:add("",   "--start",   { nargs = 1,   desc = "init shell (bash/cmd/powershell)", ignore = true })
 parser:add("",   "--config",  { nargs = 0,   desc = "look nook default config", ignore = true })
 parser:add("-h", "--help",    { nargs = 0,   desc = "show this help message", ignore = true })
 parser:add("-I", "--init",    { nargs = 0,   desc = "auto create rule/data (-n is required)" })
@@ -644,6 +644,8 @@ nook.action.start = function()
     lua "]] .. nook.path .. [[" @args
   }
   ]])
+    elseif sh == "cmd" then
+      print([[doskey nook=lua "]] .. nook.path .. [[" $*]])
     end
     os.exit(0)
   end

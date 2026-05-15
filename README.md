@@ -59,10 +59,22 @@ For full documentation, see **MANUAL.md**.
 ## Install
 
 - **bash**
-put this to **.bashrc**.
 Put this into `~/.bashrc`
 ```bash
 eval "$(lua /path/to/noo.lua --start bash)"
+```
+
+- **cmd**
+Put this into Cmd profile `%USERPROFILE%\AutoRun.cmd`:
+```bat
+@echo off
+
+set "NOOKINI=D:\Project\Personal\nookme\.nookini.lua"
+if exist "/path/to/nook.lua" (
+    for /f "delims=" %%i in ('lua "/path/to/nook.lua" --start cmd 2^>nul') do (
+        %%i 2>nul
+    )
+)
 ```
 
 - **powershell**
